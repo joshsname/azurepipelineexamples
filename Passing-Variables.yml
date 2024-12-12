@@ -1,0 +1,58 @@
+trigger:
+- none
+
+pool: 
+  name: Default
+
+stages:
+  - stage: StageA
+    jobs:
+    - job: JobASetVariable
+      steps:
+        - task: PowerShell@2
+          name: setVariableTask # Set variable in this task.
+          inputs:
+            targetType: 'inline'
+            script: |
+              $variableOne = "OutputVM"
+              $VariableTwo = "OutputIP"
+              Write-Host "##vso[task.setvariable variable=BuildOutput;isOutput=true]$variableOne"
+              Write-Host "##vso[task.setvariable variable=IPOutput;isOutput=true]$VariableTwo"
+        
+        - task: PowerShell@2
+          name: writeVariable # Test that we can read this variable within the same job.
+          condition: ne(variables['setVariableTask.BuildOutput'], '')
+          env:
+            vmName: $(setVariableTask.BuildOutput)
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "vmName: $env:vmName"
+
+    - job: testJobOutput # Test that we can read this variable within the same stage across jobs.
+      dependsOn: JobASetVariable
+      variables:
+        vmName: $[ dependencies.JobASetVariable.outputs['setVariableTask.BuildOutput'] ]
+      steps:
+        - task: PowerShell@2
+          name: writeVariable
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "vmName: $(vmName)"
+              Write-Host "End of script."
+
+  - stage: StageB
+    dependsOn: StageA
+    jobs:
+    - job: outputBuildOutput # Test that we can read this varaible across stages.
+      variables:
+        vmName: $[ stageDependencies.StageA.JobASetVariable.outputs['setVariableTask.IPOutput'] ]
+      steps:
+        - task: PowerShell@2
+          name: writeVariable
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "IP: $(vmName)"
+              Write-Host "End of script."
